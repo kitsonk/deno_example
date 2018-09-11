@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "module": "amd",
+    "moduleResolution": "node",
+    "noLib": true,
+    "noEmit": true,
+    "pretty": true,
+    "target": "esnext"
+  },
+  "files": [
+    "./lib/deno.d.ts",
+    "./src/main.ts"
+  ]
+}
