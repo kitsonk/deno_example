@@ -1,3 +1,3 @@
 import * as deno from "deno";
 
-console.log(deno.argv);
+console.log(deno.args);

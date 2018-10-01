@@ -1,7 +1,6 @@
 {
   "name": "deno_example",
   "devDependencies": {
-    "@types/flatbuffers": "^1.9.0",
     "@types/text-encoding": "0.0.33",
     "typescript": "3.0.1"
   }
