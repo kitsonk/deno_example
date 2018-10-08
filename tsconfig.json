@@ -9,7 +9,7 @@
     "target": "esnext"
   },
   "files": [
-    "./lib/deno.d.ts",
+    "./lib/lib.deno_runtime.d.ts",
     "./src/main.ts"
   ]
 }
