@@ -4,11 +4,15 @@ An example application with [deno](https://github.com/deno_land/deno).
 
 ## package.json
 
-The only reason this exists is to provide the three external libraries which are bundled within deno so that they can be resolved at design time in VSCode.  Run `yarn install` or `npm install` to install these development dependencies.
+The only reason this exists is to provide the three external libraries which are bundled within deno so that they can be resolved at design time in VSCode. Run `yarn install` or `npm install` to install these development dependencies.
 
-## lib/deno.d.ts
+## lib/lib.deno_runtime.d.ts
 
-This was generated from a custom build of `deno` that supports the `--types` command line argument.  You can simply replace this with whatever version of `deno` you are running once issue [#632](https://github.com/denoland/deno/issues/632) is closed.
+This was generated from a custom build of `deno` that supports the `--types` command line argument. You can simply replace this with whatever version of `deno` you are running, by doing something like:
+
+```
+$ deno --types > lib/lib.deno_runtime.d.ts
+```
 
 ## Running
 
@@ -21,12 +25,17 @@ $ deno ./src/main.ts
 Which should output:
 
 ```
-[ "src/main.ts" ]
+TypeScript Version: 3.1.3
+Architecture: x64
+Platform: mac
+{}
+{ bar: "bar" }
+{ baz: "bar" }
 ```
 
 ## Checking with `tsc`
 
-You can clone this repository and run `tsc -p .` to validate the project.  It should exit silently and produce no errors.
+You can clone this repository and run `tsc -p .` to validate the project. It should exit silently and produce no errors.
 
 ## Using VSCode
 
