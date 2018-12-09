@@ -14,9 +14,7 @@
     "pretty": true,
     "target": "esnext"
   },
-  "files": [
-    "./lib/lib.deno_runtime.d.ts",
-    "./src/main.ts",
-    "./src/main_test.ts"
+  "include": [
+    "./**/*.ts"
   ]
 }
