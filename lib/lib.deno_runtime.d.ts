@@ -76,7 +76,7 @@ declare module "deno" {
      *
      * Implementations must not retain `p`.
      */
-    read(p: ArrayBufferView): Promise<ReadResult>;
+    read(p: Uint8Array): Promise<ReadResult>;
   }
   export interface Writer {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
@@ -87,7 +87,7 @@ declare module "deno" {
      *
      * Implementations must not retain `p`.
      */
-    write(p: ArrayBufferView): Promise<number>;
+    write(p: Uint8Array): Promise<number>;
   }
   export interface Closer {
     close(): void;
@@ -105,7 +105,7 @@ declare module "deno" {
      */
     seek(offset: number, whence: number): Promise<void>;
   }
-  export interface ReaderCloser extends Reader, Closer {}
+  export interface ReadCloser extends Reader, Closer {}
   export interface WriteCloser extends Writer, Closer {}
   export interface ReadSeeker extends Reader, Seeker {}
   export interface WriteSeeker extends Writer, Seeker {}
@@ -119,6 +119,13 @@ declare module "deno" {
    * treat an `EOF` from `read()` as an error to be reported.
    */
   export function copy(dst: Writer, src: Reader): Promise<number>;
+  /** Turns `r` into async iterator.
+   *
+   *      for await (const chunk of readerIterator(reader)) {
+   *          console.log(chunk)
+   *      }
+   */
+  export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array>;
 
   // @url js/files.d.ts
 
@@ -126,8 +133,8 @@ declare module "deno" {
   export class File implements Reader, Writer, Closer {
     readonly rid: number;
     constructor(rid: number);
-    write(p: ArrayBufferView): Promise<number>;
-    read(p: ArrayBufferView): Promise<ReadResult>;
+    write(p: Uint8Array): Promise<number>;
+    read(p: Uint8Array): Promise<ReadResult>;
     close(): void;
   }
   /** An instance of `File` for stdin. */
@@ -153,14 +160,92 @@ declare module "deno" {
    *
    * Resolves with the `ReadResult` for the operation.
    */
-  export function read(rid: number, p: ArrayBufferView): Promise<ReadResult>;
+  export function read(rid: number, p: Uint8Array): Promise<ReadResult>;
   /** Write to the file ID the contents of the array buffer.
    *
    * Resolves with the number of bytes written.
    */
-  export function write(rid: number, p: ArrayBufferView): Promise<number>;
+  export function write(rid: number, p: Uint8Array): Promise<number>;
   /** Close the file ID. */
   export function close(rid: number): void;
+
+  // @url js/buffer.d.ts
+
+  /** A Buffer is a variable-sized buffer of bytes with read() and write()
+   * methods. Based on https://golang.org/pkg/bytes/#Buffer
+   */
+  export class Buffer implements Reader, Writer {
+    private buf;
+    private off;
+    constructor(ab?: ArrayBuffer);
+    /** bytes() returns a slice holding the unread portion of the buffer.
+     * The slice is valid for use only until the next buffer modification (that
+     * is, only until the next call to a method like read(), write(), reset(), or
+     * truncate()). The slice aliases the buffer content at least until the next
+     * buffer modification, so immediate changes to the slice will affect the
+     * result of future reads.
+     */
+    bytes(): Uint8Array;
+    /** toString() returns the contents of the unread portion of the buffer
+     * as a string. Warning - if multibyte characters are present when data is
+     * flowing through the buffer, this method may result in incorrect strings
+     * due to a character being split.
+     */
+    toString(): string;
+    /** empty() returns whether the unread portion of the buffer is empty. */
+    empty(): boolean;
+    /** length is a getter that returns the number of bytes of the unread
+     * portion of the buffer
+     */
+    readonly length: number;
+    /** Returns the capacity of the buffer's underlying byte slice, that is,
+     * the total space allocated for the buffer's data.
+     */
+    readonly capacity: number;
+    /** truncate() discards all but the first n unread bytes from the buffer but
+     * continues to use the same allocated storage.  It throws if n is negative or
+     * greater than the length of the buffer.
+     */
+    truncate(n: number): void;
+    /** reset() resets the buffer to be empty, but it retains the underlying
+     * storage for use by future writes. reset() is the same as truncate(0)
+     */
+    reset(): void;
+    /** _tryGrowByReslice() is a version of grow for the fast-case
+     * where the internal buffer only needs to be resliced. It returns the index
+     * where bytes should be written and whether it succeeded.
+     * It returns -1 if a reslice was not needed.
+     */
+    private _tryGrowByReslice;
+    private _reslice;
+    /** read() reads the next len(p) bytes from the buffer or until the buffer
+     * is drained. The return value n is the number of bytes read. If the
+     * buffer has no data to return, eof in the response will be true.
+     */
+    read(p: Uint8Array): Promise<ReadResult>;
+    write(p: Uint8Array): Promise<number>;
+    /** _grow() grows the buffer to guarantee space for n more bytes.
+     * It returns the index where bytes should be written.
+     * If the buffer can't grow it will throw with ErrTooLarge.
+     */
+    private _grow;
+    /** grow() grows the buffer's capacity, if necessary, to guarantee space for
+     * another n bytes. After grow(n), at least n bytes can be written to the
+     * buffer without another allocation. If n is negative, grow() will panic. If
+     * the buffer can't grow it will throw ErrTooLarge.
+     * Based on https://golang.org/pkg/bytes/#Buffer.Grow
+     */
+    grow(n: number): void;
+    /** readFrom() reads data from r until EOF and appends it to the buffer,
+     * growing the buffer as needed. It returns the number of bytes read. If the
+     * buffer becomes too large, readFrom will panic with ErrTooLarge.
+     * Based on https://golang.org/pkg/bytes/#Buffer.ReadFrom
+     */
+    readFrom(r: Reader): Promise<number>;
+  }
+  /** Read `r` until EOF and return the content as `Uint8Array`.
+   */
+  export function readAll(r: Reader): Promise<Uint8Array>;
 
   // @url js/mkdir.d.ts
 
@@ -205,6 +290,22 @@ declare module "deno" {
    *       const tempDirName1 = await makeTempDir({ prefix: 'my_temp' });
    */
   export function makeTempDir(options?: MakeTempDirOptions): Promise<string>;
+
+  // @url js/chmod.d.ts
+
+  /** Changes the permission of a specific file/directory of specified path
+   * synchronously.
+   *
+   *       import { chmodSync } from "deno";
+   *       chmodSync("/path/to/file", 0o666);
+   */
+  export function chmodSync(path: string, mode: number): void;
+  /** Changes the permission of a specific file/directory of specified path.
+   *
+   *       import { chmod } from "deno";
+   *       await chmod("/path/to/file", 0o666);
+   */
+  export function chmod(path: string, mode: number): Promise<void>;
 
   // @url js/remove.d.ts
 
@@ -282,8 +383,6 @@ declare module "deno" {
    * `statSync`, `lstatSync`.
    */
   export interface FileInfo {
-    readonly _isFile: boolean;
-    readonly _isSymlink: boolean;
     /** The size of the file, in bytes. */
     len: number;
     /** The last modification time of the file. This corresponds to the `mtime`
@@ -472,7 +571,7 @@ declare module "deno" {
     perm?: number
   ): Promise<void>;
 
-  // @url out/debug/gen/msg_generated.ts
+  // @url target/debug/gen/msg_generated.ts
 
   export enum ErrorKind {
     NoError = 0,
@@ -495,21 +594,22 @@ declare module "deno" {
     Other = 17,
     UnexpectedEof = 18,
     BadResource = 19,
-    EmptyHost = 20,
-    IdnaError = 21,
-    InvalidPort = 22,
-    InvalidIpv4Address = 23,
-    InvalidIpv6Address = 24,
-    InvalidDomainCharacter = 25,
-    RelativeUrlWithoutBase = 26,
-    RelativeUrlWithCannotBeABaseBase = 27,
-    SetHostOnCannotBeABaseUrl = 28,
-    Overflow = 29,
-    HttpUser = 30,
-    HttpClosed = 31,
-    HttpCanceled = 32,
-    HttpParse = 33,
-    HttpOther = 34
+    CommandFailed = 20,
+    EmptyHost = 21,
+    IdnaError = 22,
+    InvalidPort = 23,
+    InvalidIpv4Address = 24,
+    InvalidIpv6Address = 25,
+    InvalidDomainCharacter = 26,
+    RelativeUrlWithoutBase = 27,
+    RelativeUrlWithCannotBeABaseBase = 28,
+    SetHostOnCannotBeABaseUrl = 29,
+    Overflow = 30,
+    HttpUser = 31,
+    HttpClosed = 32,
+    HttpCanceled = 33,
+    HttpParse = 34,
+    HttpOther = 35
   }
 
   // @url js/errors.d.ts
@@ -531,111 +631,13 @@ declare module "deno" {
     constructor(kind: T, msg: string);
   }
 
-  // @url js/types.d.ts
-
-  type TypedArray = Uint8Array | Float32Array | Int32Array;
-  interface CallSite {
-    /** Value of `this` */
-    getThis(): any;
-    /** Type of `this` as a string.
-     *
-     * This is the name of the function stored in the constructor field of
-     * `this`, if available.  Otherwise the object's `[[Class]]` internal
-     * property.
-     */
-    getTypeName(): string | null;
-    /** Current function. */
-    getFunction(): Function | undefined;
-    /** Name of the current function, typically its name property.
-     *
-     * If a name property is not available an attempt will be made to try
-     * to infer a name from the function's context.
-     */
-    getFunctionName(): string | null;
-    /** Name of the property (of `this` or one of its prototypes) that holds
-     * the current function.
-     */
-    getMethodName(): string | null;
-    /** Name of the script (if this function was defined in a script). */
-    getFileName(): string | null;
-    /** Get the script name or source URL for the source map. */
-    getScriptNameOrSourceURL(): string;
-    /** Current line number (if this function was defined in a script). */
-    getLineNumber(): number | null;
-    /** Current column number (if this function was defined in a script). */
-    getColumnNumber(): number | null;
-    /** A call site object representing the location where eval was called (if
-     * this function was created using a call to `eval`)
-     */
-    getEvalOrigin(): string | undefined;
-    /** Is this a top level invocation, that is, is `this` the global object? */
-    isToplevel(): boolean;
-    /** Does this call take place in code defined by a call to `eval`? */
-    isEval(): boolean;
-    /** Is this call in native V8 code? */
-    isNative(): boolean;
-    /** Is this a constructor call? */
-    isConstructor(): boolean;
-  }
-  interface StartOfSourceMap {
-    file?: string;
-    sourceRoot?: string;
-  }
-  interface RawSourceMap extends StartOfSourceMap {
-    version: string;
-    sources: string[];
-    names: string[];
-    sourcesContent?: string[];
-    mappings: string;
-  }
-  global {
-    interface ErrorConstructor {
-      /** Create `.stack` property on a target object */
-      captureStackTrace(targetObject: object, constructorOpt?: Function): void;
-      /**
-       * Optional override for formatting stack traces
-       *
-       * @see https://github.com/v8/v8/wiki/Stack%20Trace%20API#customizing-stack-traces
-       */
-      prepareStackTrace?: (err: Error, stackTraces: CallSite[]) => any;
-      stackTraceLimit: number;
-    }
-  }
-
   // @url js/libdeno.d.ts
 
-  type MessageCallback = (msg: Uint8Array) => void;
   type PromiseRejectEvent =
     | "RejectWithNoHandler"
     | "HandlerAddedAfterReject"
     | "ResolveAfterResolved"
     | "RejectAfterResolved";
-  interface Libdeno {
-    recv(cb: MessageCallback): void;
-    send(control: ArrayBufferView, data?: ArrayBufferView): null | Uint8Array;
-    print(x: string, isErr?: boolean): void;
-    setGlobalErrorHandler: (
-      handler: (
-        message: string,
-        source: string,
-        line: number,
-        col: number,
-        error: Error
-      ) => void
-    ) => void;
-    setPromiseRejectHandler: (
-      handler: (
-        error: Error | string,
-        event: PromiseRejectEvent,
-        promise: Promise<any>
-      ) => void
-    ) => void;
-    setPromiseErrorExaminer: (handler: () => boolean) => void;
-    mainSource: string;
-    mainSourceMap: RawSourceMap;
-  }
-  export const libdeno: Libdeno;
-  export {};
 
   // @url js/platform.d.ts
 
@@ -646,27 +648,6 @@ declare module "deno" {
     os: "mac" | "win" | "linux";
   }
   export const platform: Platform;
-
-  // @url js/trace.d.ts
-
-  interface TraceInfo {
-    sync: boolean;
-    name: string;
-  }
-  /** Trace privileged operations executed inside a given function or promise.
-   *
-   * _Notice:_ To capture every operation in asynchronous `deno.*` calls,
-   * you might want to put them in functions instead of directly invoking.
-   *
-   *       import { trace, mkdir } from "deno";
-   *
-   *       const ops = await trace(async () => {
-   *         await mkdir("my_dir");
-   *       });
-   */
-  export function trace(
-    fnOrPromise: Function | Promise<any>
-  ): Promise<TraceInfo[]>;
 
   // @url js/truncate.d.ts
 
@@ -777,6 +758,58 @@ declare module "deno" {
   export function metrics(): Metrics;
   export {};
 
+  // @url js/resources.d.ts
+
+  type ResourceMap = {
+    [rid: number]: string;
+  };
+  /** Returns a map of open _file like_ resource ids along with their string
+   * representation.
+   */
+  export function resources(): ResourceMap;
+
+  // @url js/process.d.ts
+
+  /** How to handle subsubprocess stdio.
+   *
+   * "inherit" The default if unspecified. The child inherits from the
+   * corresponding parent descriptor.
+   *
+   * "piped"  A new pipe should be arranged to connect the parent and child
+   * subprocesses.
+   *
+   * "null" This stream will be ignored. This is the equivalent of attaching the
+   * stream to /dev/null.
+   */
+  type ProcessStdio = "inherit" | "piped" | "null";
+  export interface RunOptions {
+    args: string[];
+    cwd?: string;
+    stdout?: ProcessStdio;
+    stderr?: ProcessStdio;
+    stdin?: ProcessStdio;
+  }
+  export class Process {
+    readonly rid: number;
+    readonly pid: number;
+    readonly stdin?: WriteCloser;
+    readonly stdout?: ReadCloser;
+    readonly stderr?: ReadCloser;
+    status(): Promise<ProcessStatus>;
+    /** Buffer the stdout and return it as Uint8Array after EOF.
+     * You must have set stdout to "piped" in when creating the process.
+     * This calls close() on stdout after its done.
+     */
+    output(): Promise<Uint8Array>;
+    close(): void;
+  }
+  export interface ProcessStatus {
+    success: boolean;
+    code?: number;
+    signal?: number;
+  }
+  export function run(opt: RunOptions): Process;
+
   // @url js/deno.d.ts
 
   export const args: string[];
@@ -784,80 +817,56 @@ declare module "deno" {
 
 declare interface Window {
   window: Window;
-  setTimeout: typeof timers.setTimeout;
-  setInterval: typeof timers.setInterval;
-  clearTimeout: typeof timers.clearTimer;
-  clearInterval: typeof timers.clearTimer;
-  console: console_.Console;
-  TextEncoder: {
-    (
-      utfLabel?: string | undefined,
-      options?: TextEncoding.TextEncoderOptions | undefined
-    ): TextEncoder;
-    new (
-      utfLabel?: string | undefined,
-      options?: TextEncoding.TextEncoderOptions | undefined
-    ): TextEncoder;
-    encoding: string;
-  };
-  TextDecoder: {
-    (
-      label?: string | undefined,
-      options?: TextDecoderOptions | undefined
-    ): TextDecoder;
-    new (
-      label?: string | undefined,
-      options?: TextDecoderOptions | undefined
-    ): TextDecoder;
-    encoding: string;
-  };
   atob: typeof textEncoding.atob;
   btoa: typeof textEncoding.btoa;
-  URLSearchParams: typeof urlSearchParams.URLSearchParams;
-  fetch: typeof fetch_.fetch;
-  Headers: typeof fetch_.DenoHeaders;
+  fetch: typeof fetchTypes.fetch;
+  clearTimeout: typeof timers.clearTimer;
+  clearInterval: typeof timers.clearTimer;
+  console: consoleTypes.Console;
+  setTimeout: typeof timers.setTimeout;
+  setInterval: typeof timers.setInterval;
   Blob: typeof blob.DenoBlob;
+  File: typeof file.DenoFile;
+  URLSearchParams: typeof urlSearchParams.URLSearchParams;
+  Headers: domTypes.HeadersConstructor;
+  FormData: domTypes.FormDataConstructor;
+  TextEncoder: typeof textEncoding.TextEncoder;
+  TextDecoder: typeof textEncoding.TextDecoder;
 }
 
 declare const window: Window;
-declare const setTimeout: typeof timers.setTimeout;
-declare const setInterval: typeof timers.setInterval;
-declare const clearTimeout: typeof timers.clearTimer;
-declare const clearInterval: typeof timers.clearTimer;
-declare const console: console_.Console;
-declare const TextEncoder: {
-  (
-    utfLabel?: string | undefined,
-    options?: TextEncoding.TextEncoderOptions | undefined
-  ): TextEncoder;
-  new (
-    utfLabel?: string | undefined,
-    options?: TextEncoding.TextEncoderOptions | undefined
-  ): TextEncoder;
-  encoding: string;
-};
-declare const TextDecoder: {
-  (
-    label?: string | undefined,
-    options?: TextDecoderOptions | undefined
-  ): TextDecoder;
-  new (
-    label?: string | undefined,
-    options?: TextDecoderOptions | undefined
-  ): TextDecoder;
-  encoding: string;
-};
 declare const atob: typeof textEncoding.atob;
 declare const btoa: typeof textEncoding.btoa;
-declare const URLSearchParams: typeof urlSearchParams.URLSearchParams;
-declare const fetch: typeof fetch_.fetch;
-declare const Headers: typeof fetch_.DenoHeaders;
+declare const fetch: typeof fetchTypes.fetch;
+declare const clearTimeout: typeof timers.clearTimer;
+declare const clearInterval: typeof timers.clearTimer;
+declare const console: consoleTypes.Console;
+declare const setTimeout: typeof timers.setTimeout;
+declare const setInterval: typeof timers.setInterval;
 declare const Blob: typeof blob.DenoBlob;
+declare const File: typeof file.DenoFile;
+declare const URLSearchParams: typeof urlSearchParams.URLSearchParams;
+declare const Headers: domTypes.HeadersConstructor;
+declare const FormData: domTypes.FormDataConstructor;
+declare const TextEncoder: typeof textEncoding.TextEncoder;
+declare const TextDecoder: typeof textEncoding.TextDecoder;
+
+declare type Blob = blob.DenoBlob;
+declare type File = file.DenoFile;
+declare type URLSearchParams = urlSearchParams.URLSearchParams;
+declare type Headers = domTypes.Headers;
+declare type FormData = domTypes.FormData;
+declare type TextEncoder = textEncoding.TextEncoder;
+declare type TextDecoder = textEncoding.TextDecoder;
 
 declare namespace domTypes {
   // @url js/dom_types.d.ts
 
-  export type HeadersInit = Headers | string[][] | Record<string, string>;
+  export type BufferSource = ArrayBufferView | ArrayBuffer;
+  export type HeadersInit =
+    | Headers
+    | Array<[string, string]>
+    | Record<string, string>;
   export type URLSearchParamsInit =
     | string
     | string[][]
@@ -878,13 +887,23 @@ declare namespace domTypes {
     | "origin-when-cross-origin"
     | "unsafe-url";
   export type BlobPart = BufferSource | Blob | string;
-  type FormDataEntryValue = File | string;
+  export type FormDataEntryValue = File | string;
   export type EventListenerOrEventListenerObject =
     | EventListener
     | EventListenerObject;
+  export interface DomIterable<K, V> {
+    keys(): IterableIterator<K>;
+    values(): IterableIterator<V>;
+    entries(): IterableIterator<[K, V]>;
+    [Symbol.iterator](): IterableIterator<[K, V]>;
+    forEach(
+      callback: (value: V, key: K, parent: this) => void,
+      thisArg?: any
+    ): void;
+  }
   interface Element {}
   export interface HTMLFormElement {}
-  type EndingType = "tranparent" | "native";
+  type EndingType = "transparent" | "native";
   export interface BlobPropertyBag {
     type?: string;
     ending?: EndingType;
@@ -988,7 +1007,7 @@ declare namespace domTypes {
     readonly CAPTURING_PHASE: number;
     readonly NONE: number;
   }
-  interface File extends Blob {
+  export interface File extends Blob {
     readonly lastModified: number;
     readonly name: string;
   }
@@ -1031,7 +1050,7 @@ declare namespace domTypes {
       options?: boolean | EventListenerOptions
     ): void;
   }
-  interface ReadableStream {
+  export interface ReadableStream {
     readonly locked: boolean;
     cancel(): Promise<void>;
     getReader(): ReadableStreamReader;
@@ -1039,26 +1058,22 @@ declare namespace domTypes {
   interface EventListenerObject {
     handleEvent(evt: Event): void;
   }
-  interface ReadableStreamReader {
+  export interface ReadableStreamReader {
     cancel(): Promise<void>;
     read(): Promise<any>;
     releaseLock(): void;
   }
-  export interface FormData {
+  export interface FormData extends DomIterable<string, FormDataEntryValue> {
     append(name: string, value: string | Blob, fileName?: string): void;
     delete(name: string): void;
     get(name: string): FormDataEntryValue | null;
     getAll(name: string): FormDataEntryValue[];
     has(name: string): boolean;
     set(name: string, value: string | Blob, fileName?: string): void;
-    forEach(
-      callbackfn: (
-        value: FormDataEntryValue,
-        key: string,
-        parent: FormData
-      ) => void,
-      thisArg?: any
-    ): void;
+  }
+  export interface FormDataConstructor {
+    new (): FormData;
+    prototype: FormData;
   }
   /** A blob object represents a file-like object of immutable, raw data. */
   export interface Blob {
@@ -1073,7 +1088,7 @@ declare namespace domTypes {
      */
     slice(start?: number, end?: number, contentType?: string): Blob;
   }
-  interface Body {
+  export interface Body {
     /** A simple getter used to expose a `ReadableStream` of the body contents. */
     readonly body: ReadableStream | null;
     /** Stores a `Boolean` that declares whether the body has been used in a
@@ -1101,7 +1116,7 @@ declare namespace domTypes {
      */
     text(): Promise<string>;
   }
-  export interface Headers {
+  export interface Headers extends DomIterable<string, string> {
     /** Appends a new value onto an existing header inside a `Headers` object, or
      * adds the header if it does not already exist.
      */
@@ -1134,13 +1149,17 @@ declare namespace domTypes {
      */
     values(): IterableIterator<string>;
     forEach(
-      callbackfn: (value: string, key: string, parent: Headers) => void,
+      callbackfn: (value: string, key: string, parent: this) => void,
       thisArg?: any
     ): void;
     /** The Symbol.iterator well-known symbol specifies the default
      * iterator for this Headers object
      */
     [Symbol.iterator](): IterableIterator<[string, string]>;
+  }
+  export interface HeadersConstructor {
+    new (init?: HeadersInit): Headers;
+    prototype: Headers;
   }
   type RequestCache =
     | "default"
@@ -1226,7 +1245,7 @@ declare namespace domTypes {
      */
     readonly integrity: string;
     /** Returns a boolean indicating whether or not request is for a history
-     * navigation (a.k.a. back-foward navigation).
+     * navigation (a.k.a. back-forward navigation).
      */
     readonly isHistoryNavigation: boolean;
     /** Returns a boolean indicating whether or not request is for a reload
@@ -1315,7 +1334,7 @@ declare namespace blob {
   }
 }
 
-declare namespace console_ {
+declare namespace consoleTypes {
   // @url js/console.d.ts
 
   export class Console {
@@ -1346,51 +1365,158 @@ declare namespace console_ {
   }
 }
 
-declare namespace fetch_ {
+declare namespace file {
+  // @url js/file.d.ts
+
+  export class DenoFile extends blob.DenoBlob implements domTypes.File {
+    lastModified: number;
+    name: string;
+    constructor(
+      fileBits: domTypes.BlobPart[],
+      fileName: string,
+      options?: domTypes.FilePropertyBag
+    );
+  }
+}
+
+declare namespace io {
+  // @url js/io.d.ts
+
+  export interface ReadResult {
+    nread: number;
+    eof: boolean;
+  }
+  export interface Reader {
+    /** Reads up to p.byteLength bytes into `p`. It resolves to the number
+     * of bytes read (`0` <= `n` <= `p.byteLength`) and any error encountered.
+     * Even if `read()` returns `n` < `p.byteLength`, it may use all of `p` as
+     * scratch space during the call. If some data is available but not
+     * `p.byteLength` bytes, `read()` conventionally returns what is available
+     * instead of waiting for more.
+     *
+     * When `read()` encounters an error or end-of-file condition after
+     * successfully reading `n` > `0` bytes, it returns the number of bytes read.
+     * It may return the (non-nil) error from the same call or return the error
+     * (and `n` == `0`) from a subsequent call. An instance of this general case
+     * is that a `Reader` returning a non-zero number of bytes at the end of the
+     * input stream may return either `err` == `EOF` or `err` == `null`. The next
+     * `read()` should return `0`, `EOF`.
+     *
+     * Callers should always process the `n` > `0` bytes returned before
+     * considering the `EOF`. Doing so correctly handles I/O errors that happen
+     * after reading some bytes and also both of the allowed `EOF` behaviors.
+     *
+     * Implementations of `read()` are discouraged from returning a zero byte
+     * count with a `null` error, except when `p.byteLength` == `0`. Callers
+     * should treat a return of `0` and `null` as indicating that nothing
+     * happened; in particular it does not indicate `EOF`.
+     *
+     * Implementations must not retain `p`.
+     */
+    read(p: Uint8Array): Promise<ReadResult>;
+  }
+  export interface Writer {
+    /** Writes `p.byteLength` bytes from `p` to the underlying data
+     * stream. It resolves to the number of bytes written from `p` (`0` <= `n` <=
+     * `p.byteLength`) and any error encountered that caused the write to stop
+     * early. `write()` must return a non-null error if it returns `n` <
+     * `p.byteLength`. write() must not modify the slice data, even temporarily.
+     *
+     * Implementations must not retain `p`.
+     */
+    write(p: Uint8Array): Promise<number>;
+  }
+  export interface Closer {
+    close(): void;
+  }
+  export interface Seeker {
+    /** Seek sets the offset for the next `read()` or `write()` to offset,
+     * interpreted according to `whence`: `SeekStart` means relative to the start
+     * of the file, `SeekCurrent` means relative to the current offset, and
+     * `SeekEnd` means relative to the end. Seek returns the new offset relative
+     * to the start of the file and an error, if any.
+     *
+     * Seeking to an offset before the start of the file is an error. Seeking to
+     * any positive offset is legal, but the behavior of subsequent I/O operations
+     * on the underlying object is implementation-dependent.
+     */
+    seek(offset: number, whence: number): Promise<void>;
+  }
+  export interface ReadCloser extends Reader, Closer {}
+  export interface WriteCloser extends Writer, Closer {}
+  export interface ReadSeeker extends Reader, Seeker {}
+  export interface WriteSeeker extends Writer, Seeker {}
+  export interface ReadWriteCloser extends Reader, Writer, Closer {}
+  export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
+  /** Copies from `src` to `dst` until either `EOF` is reached on `src`
+   * or an error occurs. It returns the number of bytes copied and the first
+   * error encountered while copying, if any.
+   *
+   * Because `copy()` is defined to read from `src` until `EOF`, it does not
+   * treat an `EOF` from `read()` as an error to be reported.
+   */
+  export function copy(dst: Writer, src: Reader): Promise<number>;
+  /** Turns `r` into async iterator.
+   *
+   *      for await (const chunk of readerIterator(reader)) {
+   *          console.log(chunk)
+   *      }
+   */
+  export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array>;
+}
+
+declare namespace fetchTypes {
   // @url js/fetch.d.ts
 
-  export class DenoHeaders implements domTypes.Headers {
-    private headerMap;
-    constructor(init?: domTypes.HeadersInit);
-    private normalizeParams;
-    append(name: string, value: string): void;
-    delete(name: string): void;
-    entries(): IterableIterator<[string, string]>;
-    get(name: string): string | null;
-    has(name: string): boolean;
-    keys(): IterableIterator<string>;
-    set(name: string, value: string): void;
-    values(): IterableIterator<string>;
-    forEach(
-      callbackfn: (
-        value: string,
-        key: string,
-        parent: domTypes.Headers
-      ) => void,
-      thisArg?: any
-    ): void;
-    [Symbol.iterator](): IterableIterator<[string, string]>;
+  class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
+    private rid;
+    readonly contentType: string;
+    bodyUsed: boolean;
+    private _bodyPromise;
+    private _data;
+    readonly locked: boolean;
+    readonly body: null | Body;
+    constructor(rid: number, contentType: string);
+    private _bodyBuffer;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    blob(): Promise<domTypes.Blob>;
+    formData(): Promise<domTypes.FormData>;
+    json(): Promise<any>;
+    text(): Promise<string>;
+    read(p: Uint8Array): Promise<io.ReadResult>;
+    close(): void;
+    cancel(): Promise<void>;
+    getReader(): domTypes.ReadableStreamReader;
+  }
+  class Response implements domTypes.Response {
+    readonly status: number;
+    readonly url: string;
+    statusText: string;
+    readonly type = "basic";
+    redirected: boolean;
+    headers: domTypes.Headers;
+    readonly trailer: Promise<domTypes.Headers>;
+    bodyUsed: boolean;
+    readonly body: Body;
+    constructor(
+      status: number,
+      headersList: Array<[string, string]>,
+      rid: number,
+      body_?: null | Body
+    );
+    arrayBuffer(): Promise<ArrayBuffer>;
+    blob(): Promise<domTypes.Blob>;
+    formData(): Promise<domTypes.FormData>;
+    json(): Promise<any>;
+    text(): Promise<string>;
+    readonly ok: boolean;
+    clone(): domTypes.Response;
   }
   /** Fetch a resource from the network. */
   export function fetch(
-    input?: domTypes.Request | string,
+    input: domTypes.Request | string,
     init?: domTypes.RequestInit
-  ): Promise<domTypes.Response>;
-}
-
-type BufferSource = ArrayBufferView | ArrayBuffer;
-interface TextDecodeOptions {
-  stream?: boolean;
-}
-interface TextDecoderOptions {
-  fatal?: boolean;
-  ignoreBOM?: boolean;
-}
-interface TextDecoder {
-  readonly encoding: string;
-  readonly fatal: boolean;
-  readonly ignoreBOM: boolean;
-  decode(input?: BufferSource, options?: TextDecodeOptions): string;
+  ): Promise<Response>;
 }
 
 declare namespace textEncoding {
@@ -1399,18 +1525,45 @@ declare namespace textEncoding {
   export function atob(s: string): string;
   /** Creates a base-64 ASCII string from the input string. */
   export function btoa(s: string): string;
+  export interface TextDecodeOptions {
+    stream?: false;
+  }
+  export interface TextDecoderOptions {
+    fatal?: boolean;
+    ignoreBOM?: false;
+  }
+  export class TextDecoder {
+    private _encoding;
+    /** Returns encoding's name, lowercased. */
+    readonly encoding: string;
+    /** Returns `true` if error mode is "fatal", and `false` otherwise. */
+    readonly fatal: boolean;
+    /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
+    readonly ignoreBOM = false;
+    constructor(label?: string, options?: TextDecoderOptions);
+    /** Returns the result of running encoding's decoder. */
+    decode(input?: domTypes.BufferSource, options?: TextDecodeOptions): string;
+  }
+  export class TextEncoder {
+    /** Returns "utf-8". */
+    readonly encoding = "utf-8";
+    /** Returns the result of running UTF-8's encoder. */
+    encode(input?: string): Uint8Array;
+  }
 }
 
 declare namespace timers {
   // @url js/timers.d.ts
 
-  export function setTimeout<Args extends Array<unknown>>(
+  export type Args = any[];
+  /** Sets a timer which executes a function once after the timer expires. */
+  export function setTimeout(
     cb: (...args: Args) => void,
     delay: number,
     ...args: Args
   ): number;
   /** Repeatedly calls a function , with a fixed time delay between each call. */
-  export function setInterval<Args extends Array<unknown>>(
+  export function setInterval(
     cb: (...args: Args) => void,
     delay: number,
     ...args: Args
@@ -1521,3 +1674,4 @@ declare namespace urlSearchParams {
     toString(): string;
   }
 }
+

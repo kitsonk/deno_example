@@ -1,7 +1,7 @@
 import * as bar from "./bar.js";
 
 (async () => {
-  const baz = await import("./baz.ts");
+  const baz = await import("./baz");
   console.log(baz);
 })();
 
