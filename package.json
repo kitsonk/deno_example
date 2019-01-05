@@ -1,0 +1,14 @@
+{
+  "name": "deno_example",
+  "version": "0.0.5",
+  "description": "An Example Deno Project",
+  "main": "main.ts",
+  "repository": "git@github.com:kitsonk/deno_example.git",
+  "author": "Kitson Kelly <me@kitsonkelly.com>",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "deno_ls_plugin": "^0.1.0",
+    "typescript": "3.2.2"
+  }
+}
