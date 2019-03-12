@@ -1,8 +1,6 @@
-import * as deno from "deno";
-import { color } from "./deps.ts";
-import * as foo from "./foo.js";
+import { cyan, bold } from "./deps.ts";
 
-console.log(color.cyan.bold("Architecture:"), deno.platform.arch);
-console.log(color.cyan.bold("Platform:"), deno.platform.os);
-
-console.log(foo);
+console.log(cyan(bold("Architecture:")), Deno.platform.arch);
+console.log(cyan(bold("Platform:")), Deno.platform.os);
+console.log();
+console.log(cyan(bold("args:")), window.Deno.args);

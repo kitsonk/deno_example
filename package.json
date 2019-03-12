@@ -9,6 +9,6 @@
   "private": true,
   "devDependencies": {
     "deno_ls_plugin": "^0.1.0",
-    "typescript": "3.2.2"
+    "typescript": "3.3.3333"
   }
 }

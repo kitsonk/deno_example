@@ -1,1 +1,1 @@
-export { color } from "https://deno.land/x/std@v0.2.4/colors/main.ts";
+export { cyan, bold } from "https://deno.land/std@v0.3.1/colors/mod.ts";

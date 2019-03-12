@@ -2,14 +2,25 @@
   "compilerOptions": {
     "allowJs": true,
     "baseUrl": ".",
-    "checkJs": true,
+    "esModuleInterop": true,
+    "lib": ["esnext"],
     "module": "amd",
     "moduleResolution": "node",
     "noEmit": true,
-    "noLib": true,
     "paths": {
-      "http://*": ["../../.deno/deps/http/*"],
-      "https://*": ["../../.deno/deps/https/*"]
+      // Paths have to be relative to `baseUrl`
+      "http://*": [
+        // This is the OSX location (assumine root is two levels up)
+        "../../Library/Caches/deno/deps/http/*",
+        // This is the typical location a Linux
+        "../../.cache/deno/deps/http/*"
+      ],
+      "https://*": [
+        // This is the OSX location (assumine root is two levels up)
+        "../../Library/Caches/deno/deps/https/*",
+        // This is the typical location a Linux
+        "../../.cache/deno/deps/https/*"
+      ]
     },
     "plugins": [
       {
@@ -20,7 +31,5 @@
     "resolveJsonModule": true,
     "target": "esnext"
   },
-  "include": [
-    "./**/*.ts"
-  ]
+  "include": ["./**/*.ts"]
 }

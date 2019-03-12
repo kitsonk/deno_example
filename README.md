@@ -2,6 +2,8 @@
 
 An example application with [deno](https://github.com/deno_land/deno).
 
+This reflects Deno as of v0.3.1.
+
 ## `lib/lib.deno_runtime.d.ts`
 
 This file contains all the runtime type information, which can be used to
@@ -27,25 +29,27 @@ Which should output something like:
 ```
 Architecture: x64
 Platform: mac
-{}
-{ bar: "bar" }
-{ baz: "bar" }
+
+args: [ "main.ts" ]
 ```
 
 There is also a basic tests which you can run via:
 
 ```
-$ deno main_test.ts
+$ deno test.ts
 ```
 
 Which should output:
 
 ```
-Downloading https://deno.land/x/testing/testing
-Downloading https://deno.land/x/testing/util
+Downloading https://deno.land/std@v0.3.1/testing/mod.ts...
+Downloading https://deno.land/std@v0.3.1/colors/mod.ts...
+Downloading https://deno.land/std@v0.3.1/testing/asserts.ts...
+Downloading https://deno.land/std@v0.3.1/testing/pretty.ts...
+Downloading https://deno.land/std@v0.3.1/testing/diff.ts...
+Downloading https://deno.land/std@v0.3.1/testing/format.ts...
 running 1 tests
-test basic
-... ok
+test basic ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
@@ -82,17 +86,30 @@ exist in the local Deno cache:
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "http://*": ["../../.deno/deps/http/*"],
-      "https://*": ["../../.deno/deps/https/*"]
+      // Paths have to be relative to `baseUrl`
+      "http://*": [
+        // This is the OSX location (assumine root is two levels up)
+        "../../Library/Caches/deno/deps/http/*",
+        // This is the typical location a Linux
+        "../../.cache/deno/deps/http/*"
+      ],
+      "https://*": [
+        // This is the OSX location (assumine root is two levels up)
+        "../../Library/Caches/deno/deps/https/*",
+        // This is the typical location a Linux
+        "../../.cache/deno/deps/https/*"
+      ]
     }
   }
 }
 ```
 
-The Deno cache defaults to `$HOME/.deno/` and can be overridden by setting the
-`DENO_DIR` environment variable. `paths` works off of relative paths from the
-`baseURl`, so the values may need to be adjusted based on your local
-configuration.
+The Deno cache defaults to the _standard_ location based on operating system.
+See the notes in the
+[Deno Manual](https://deno.land/manual.html#linkingtothirdpartycode) on this. It
+can be overridden by setting the `DENO_DIR` environment variable. `paths` works
+off of relative paths from the `baseURl`, so the values may need to be adjusted
+based on your local configuration.
 
 Also, you will not get intellisense until the remote modules are at least
 retrieved once.
